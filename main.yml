@@ -214,13 +214,14 @@ Resources:
 
           # Connect to the database and execute commands
           db_endpoint=""
-          while [ -z "$db_endpoint" ]; do
+          while [ -z "$db_endpoint" ] || [[ ! "$db_endpoint" == "mydbinstance"* ]]; do
               db_endpoint=$(get_rds_endpoint)
-              if [ -z "$db_endpoint" ]; then
-                  echo "Failed to retrieve RDS endpoint. Retrying in 5 seconds..."
+              if [ -z "$db_endpoint" ] || [[ ! "$db_endpoint" == "mydbinstance"* ]]; then
+                  echo "Failed to retrieve valid RDS endpoint. Retrying in 5 seconds..."
                   sleep 5
               fi
           done
+
 
           mysql -h "$db_endpoint" -u admin -padmin123 <<-EOF
           CREATE DATABASE wordpress_db;
