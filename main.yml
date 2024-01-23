@@ -235,6 +235,7 @@ Resources:
           sudo sed -i "s/username_here/admin/" /var/www/html/wp-config.php
           sudo sed -i "s/password_here/admin123/" /var/www/html/wp-config.php
           sudo sed -i "s/localhost/$db_endpoint/" /var/www/html/wp-config.php
+          sudo rm /var/www/html/wp-config-sample.php
           sudo systemctl restart httpd
 
           echo "WordPress installation and database configuration completed."
