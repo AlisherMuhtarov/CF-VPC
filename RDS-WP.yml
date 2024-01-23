@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  DBInstanceIdentifier:
+    Type: "String"
+    Default: "MyDBInstance"
+  DBName:
+    Type: "String"
+    Default: "MyDatabase"
+  MasterUsername:
+    Type: "String"
+    Default: "admin"
+  MasterUserPassword:
+    Type: "String"
+    Default: "admin123"
+  VpcCIDR:
+    Type: "String"
+    Default: "10.0.0.0/23"
+
+Resources:
+  MyVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      Tags:
+        - Key: "Name"
+          Value: "MyVPC"
+
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+
+  AttachGateway:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.0.0/25"
+      AvailabilityZone: "us-east-1a"
+      Tags:
+        - Key: "Name"
+          Value: "PublicSubnet1"
+
+  PublicSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.0.128/25"
+      AvailabilityZone: "us-east-1b"
+      MapPublicIpOnLaunch: "true"
+      Tags:
+        - Key: "Name"
+          Value: "PublicSubnet2"
+
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.0/25"
+      AvailabilityZone: "us-east-1a"
+      Tags:
+        - Key: "Name"
+          Value: "PrivateSubnet1"
+
+  PrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.128/25"
+      AvailabilityZone: "us-east-1b"
+      Tags:
+        - Key: "Name"
+          Value: "PrivateSubnet2"
+
+  PrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: "Name"
+          Value: "PrivateRouteTable"
+
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: "Name"
+          Value: "PublicRouteTable"
+
+  PublicRoute:
+    Type: "AWS::EC2::Route"
+    DependsOn: "AttachGateway"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  AssociatePublicSubnet1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  AssociatePublicSubnet2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  AssociatePrivateSubnet1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  AssociatePrivateSubnet2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  MyDBInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      AllocatedStorage: 5
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      DBName: !Ref DBName
+      Engine: "mariadb"
+      DBInstanceClass: "db.t2.micro"
+      DBSecurityGroups:
+        - !Ref MyDBSecurityGroup
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DBSubnetGroupName: !Ref MySubGroup
+
+  MySubGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "Subnet group for RDS"
+      SubnetIds:
+        - !Ref "PrivateSubnet1"
+        - !Ref "PrivateSubnet2"
+
+  MyDBSecurityGroup:
+    Type: "AWS::RDS::DBSecurityGroup"
+    Properties:
+      EC2VpcId: !Ref MyVPC
+      DBSecurityGroupIngress:
+        - EC2SecurityGroupId: !Ref EC2SecurityGroup
+      GroupDescription: "DB Security Group for RDS"
+
+  EC2SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Security group for MariaDB"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"  
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"  
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"  
+          
+  MyEC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      InstanceType: "t2.micro"
+      KeyName: "laptop_key"
+      IamInstanceProfile: "Terraform-Server-Role"
+      ImageId: "ami-0e9107ed11be76fde" 
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          # Add this line at the beginning of your script
+          exec > >(tee -a /home/ec2-user/file.log) 2>&1
+
+          # Function to get RDS endpoint
+          get_rds_endpoint() {
+              aws rds describe-db-instances --query "DBInstances[0].Endpoint.Address" --output text
+          }
+
+          # Update and install dependencies
+          sudo dnf update -y
+          sudo dnf install -y httpd wget php-fpm php-mysqli php-json php php-devel
+          sudo dnf install mariadb105-server -y
+
+          # Start and enable Apache
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          sudo systemctl is-enabled httpd
+
+          # Start and enable MariaDB
+          sudo systemctl start mariadb
+          sudo systemctl enable mariadb
+
+          # Install wget
+          sudo yum install -y wget
+
+          # Download and extract WordPress
+          wget https://wordpress.org/latest.tar.gz
+          tar -zxvf latest.tar.gz
+          sudo mv wordpress/* /var/www/html/
+
+          # Connect to the database and execute commands
+          db_endpoint=""
+          while [ -z "$db_endpoint" ]; do
+              db_endpoint=$(get_rds_endpoint)
+              if [ -z "$db_endpoint" ]; then
+                  echo "Failed to retrieve RDS endpoint. Retrying in 5 seconds..."
+                  sleep 5
+              fi
+          done
+
+          mysql -h "$db_endpoint" -u admin -padmin123 <<-EOF
+          CREATE DATABASE wordpress_db;
+          CREATE USER 'admin'@'localhost' IDENTIFIED BY 'admin123';
+          GRANT ALL PRIVILEGES ON wordpress_db.* TO 'admin'@'localhost';
+          FLUSH PRIVILEGES;
+          EOF
+
+          # Configure wp-config.php
+          sudo cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
+          sudo sed -i "s/database_name_here/wordpress_db/" /var/www/html/wp-config.php
+          sudo sed -i "s/username_here/admin/" /var/www/html/wp-config.php
+          sudo sed -i "s/password_here/admin123/" /var/www/html/wp-config.php
+          sudo sed -i "s/localhost/$db_endpoint/" /var/www/html/wp-config.php
+          sudo systemctl restart httpd
+
+          echo "WordPress installation and database configuration completed."
+
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: '0'
+          SubnetId: !Ref PublicSubnet1
+          GroupSet:
+          - !Ref EC2SecurityGroup
+      
