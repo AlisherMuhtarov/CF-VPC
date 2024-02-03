@@ -130,6 +130,7 @@ Resources:
       DBInstanceIdentifier: !Ref DBInstanceIdentifier
       DBName: !Ref DBName
       Engine: "mariadb"
+      EngineVersion: "10.6"
       DBInstanceClass: "db.t2.micro"
       DBSecurityGroups:
         - !Ref MyDBSecurityGroup
